@@ -1270,6 +1270,16 @@ with, whether images reach it or are described
 first, which model magpie picks to describe images, and the model lists
 magpie writes into the agents.
 
+For Codex, the model list is also where its context length comes from: each
+entry carries the model's whole `context_window`. Magpie's own entries say
+`effective_context_window_percent = 100`, because Codex otherwise uses 95% of
+the declared window. A compaction threshold (`Compact at`) is written as
+`auto_compact_token_limit`, never by shrinking `context_window`. While Codex
+reaches magpie, the top-level `model_context_window` follows the selected
+model's real catalog window as a compatibility fallback; it changes with the
+model and goes when the window is unknown. A value you write there yourself
+is never overwritten, and an edit or deletion after magpie wrote it is final.
+
 ### The name a vendor knows a model by
 
 A relay often serves a model under an id of its own — a prefix it namespaces

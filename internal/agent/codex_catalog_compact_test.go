@@ -34,13 +34,14 @@ func TestCodexCatalogCompactAtReachesDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	contextOf := func() (window, max int) {
+	contextOf := func() (window, max, compact int) {
 		t.Helper()
 		var got struct {
 			Models []struct {
 				Slug          string `json:"slug"`
 				ContextWindow int    `json:"context_window"`
 				MaxContext    int    `json:"max_context_window"`
+				AutoCompact   int    `json:"auto_compact_token_limit"`
 			} `json:"models"`
 		}
 		raw := readFile(filepath.Join(home, ".codex", "magpie-models.json"))
@@ -49,7 +50,7 @@ func TestCodexCatalogCompactAtReachesDisk(t *testing.T) {
 		}
 		for _, m := range got.Models {
 			if m.Slug == "relay/glm-4.6" {
-				return m.ContextWindow, m.MaxContext
+				return m.ContextWindow, m.MaxContext, m.AutoCompact
 			}
 		}
 		slugs := make([]string, 0, len(got.Models))
@@ -57,22 +58,21 @@ func TestCodexCatalogCompactAtReachesDisk(t *testing.T) {
 			slugs = append(slugs, m.Slug)
 		}
 		t.Fatalf("relay/glm-4.6 is not in the on-disk catalog; slugs: %v", slugs)
-		return 0, 0
+		return 0, 0, 0
 	}
 
-	// relay's own "*" threshold, below the model's window: the window it is
-	// told is the threshold, and the model's own window is kept as the
-	// maximum so Codex still knows how much the model really takes
-	if window, max := contextOf(); window != 100000 || max != 204800 {
-		t.Fatalf("with relay's Compact at 100000: context_window = %d, max_context_window = %d; want 100000 and 204800", window, max)
+	// relay's own "*" threshold, below the model's window: the context
+	// window stays what the model takes, and the threshold is separate
+	if window, max, compact := contextOf(); window != 204800 || max != 0 || compact != 100000 {
+		t.Fatalf("with relay's Compact at 100000: context_window = %d, max_context_window = %d, auto_compact_token_limit = %d; want 204800, 0, 100000", window, max, compact)
 	}
 
 	// the model's own threshold comes before its provider's
 	if err := provider.SetModelCompacts("relay", map[string]int{"*": 100000, "glm-4.6": 150000}); err != nil {
 		t.Fatal(err)
 	}
-	if window, max := contextOf(); window != 150000 || max != 204800 {
-		t.Fatalf("with relay/glm-4.6's own Compact at 150000: context_window = %d, max_context_window = %d; want 150000 and 204800", window, max)
+	if window, max, compact := contextOf(); window != 204800 || max != 0 || compact != 150000 {
+		t.Fatalf("with relay/glm-4.6's own Compact at 150000: context_window = %d, max_context_window = %d, auto_compact_token_limit = %d; want 204800, 0, 150000", window, max, compact)
 	}
 
 	// taken away, the one for every model answers again: the whole window,
@@ -80,7 +80,7 @@ func TestCodexCatalogCompactAtReachesDisk(t *testing.T) {
 	if err := provider.SetModelCompacts("relay", nil); err != nil {
 		t.Fatal(err)
 	}
-	if window, max := contextOf(); window != 204800 || max != 0 {
-		t.Fatalf("with no threshold set: context_window = %d, max_context_window = %d; want the window and no maximum", window, max)
+	if window, max, compact := contextOf(); window != 204800 || max != 0 || compact != 0 {
+		t.Fatalf("with no threshold set: context_window = %d, max_context_window = %d, auto_compact_token_limit = %d; want the whole window and no compaction limit", window, max, compact)
 	}
 }

@@ -18,8 +18,9 @@ import (
 // it as its context_window, on disk and in the gateway's list, with no
 // max_context_window; Claude Code is handed no CLAUDE_CODE_AUTO_COMPACT_
 // WINDOW, so it runs to the CLAUDE_CODE_MAX_CONTEXT_TOKENS it is told. A
-// model whose window nobody typed keeps the default, and a size typed in
-// Settings (Compact at) still comes before a typed window.
+// model whose window nobody typed keeps magpie's working window as its
+// auto-compaction point but still declares its real context window, and a
+// size typed in Settings (Compact at) comes first there.
 func TestTypedWindowReachesCodexAndClaudeCode(t *testing.T) {
 	home := syncHome(t)
 	catalog.Changed = SyncCatalog
@@ -79,9 +80,9 @@ func TestTypedWindowReachesCodexAndClaudeCode(t *testing.T) {
 		}
 	}
 	expect("typed windows", map[string]window{
-		"group/flash": {500000, 0},       // the group's own size
-		"ds/pro":      {400000, 0},       // the provider's for the model
-		"ds/flash":    {272000, 1000000}, // nobody typed it: the default
+		"group/flash": {500000, 0},  // the group's own size
+		"ds/pro":      {400000, 0},  // the provider's for the model
+		"ds/flash":    {1000000, 0}, // the real window, compacting at 272K
 	}, map[string]int{"group/flash": 500000, "ds/pro": 400000, "ds/flash": 0})
 
 	path := filepath.Join(home, ".claude", "settings.json")
@@ -105,8 +106,8 @@ func TestTypedWindowReachesCodexAndClaudeCode(t *testing.T) {
 	must(provider.SetCompactAt(300000))
 	SyncCatalog()
 	expect("Compact at 300K", map[string]window{
-		"group/flash": {300000, 500000},
-		"ds/pro":      {300000, 400000},
+		"group/flash": {500000, 0},
+		"ds/pro":      {400000, 0},
 	}, map[string]int{"group/flash": 0, "ds/pro": 0})
 	must(a.Field("model").Set("group/flash"))
 	if c := env(claudeCompactEnv); c != "300000" {
@@ -202,7 +203,7 @@ func TestLargestMemberTypedWindow(t *testing.T) {
 	raw := readFile(filepath.Join(home, ".codex", "magpie-models.json"))
 	must(json.Unmarshal([]byte(raw), &disk))
 	for _, m := range disk.Models {
-		want := map[string][2]int{"group/ultra": {872000, 0}, "group/loose": {272000, 1000000}}
+		want := map[string][2]int{"group/ultra": {872000, 0}, "group/loose": {1000000, 0}}
 		if w, ok := want[m.Slug]; ok && [2]int{m.Context, m.Max} != w {
 			t.Errorf("Codex: on disk %s is told %d (max %d); want %v", m.Slug, m.Context, m.Max, w)
 		}

@@ -61,7 +61,7 @@ func TestKeepUserKeys(t *testing.T) {
 	}
 
 	cur := `{"models":[
-	 {"slug":"fake/m1","supports_reasoning_summaries":true,"x_note":{"by":"me"},"max_output_tokens":128000,
+	 {"slug":"fake/m1","supports_reasoning_summaries":true,"effective_context_window_percent":90,"x_note":{"by":"me"},"max_output_tokens":128000,
 	  "context_window":1,"auto_review_model_override":"old/one","shell_type":"local"},
 	 {"slug":"codex/gpt-5.5","supports_reasoning_summaries":false,"upgrade":{"model":"gpt-6"},"x_mine":1},
 	 {"slug":"gone/model","x_note":"left"}]}`
@@ -74,8 +74,10 @@ func TestKeepUserKeys(t *testing.T) {
 		t.Fatalf("%v %v", err, got)
 	}
 	m1, own := got.Models[0], got.Models[1]
-	if m1["supports_reasoning_summaries"] != true || m1["max_output_tokens"] != json.Number("128000") {
-		t.Errorf("user's keys: %v %v", m1["supports_reasoning_summaries"], m1["max_output_tokens"])
+	if m1["supports_reasoning_summaries"] != true || m1["max_output_tokens"] != json.Number("128000") ||
+		m1["effective_context_window_percent"] != json.Number("90") {
+		t.Errorf("user's keys: %v %v %v", m1["supports_reasoning_summaries"],
+			m1["max_output_tokens"], m1["effective_context_window_percent"])
 	}
 	if n, _ := m1["x_note"].(map[string]any); n["by"] != "me" {
 		t.Errorf("user's object: %v", m1["x_note"])
@@ -93,7 +95,24 @@ func TestKeepUserKeys(t *testing.T) {
 	if own["supports_reasoning_summaries"] != true || own["x_mine"] != json.Number("1") {
 		t.Errorf("own entry: %v %v", own["supports_reasoning_summaries"], own["x_mine"])
 	}
+	// Codex's own entry keeps its cached percentage, or Codex's default
+	// when it has none; magpie's generic entry is the one that says 100.
+	if v, ok := own["effective_context_window_percent"]; ok && v != json.Number("95") {
+		t.Errorf("own entry percentage: %v", own["effective_context_window_percent"])
+	}
 	if _, ok := own["upgrade"]; ok {
 		t.Error("upgrade prompt came back")
+	}
+
+	// A percentage the user wrote is theirs even when it equals Codex's
+	// own default, which magpie's generic entry otherwise replaces with 100.
+	cur = `{"models":[{"slug":"fake/m1","effective_context_window_percent":95}]}`
+	d = json.NewDecoder(strings.NewReader(string(Keep([]byte(cur), b))))
+	d.UseNumber()
+	if err := d.Decode(&got); err != nil || len(got.Models) != 2 {
+		t.Fatalf("%v %v", err, got)
+	}
+	if got.Models[0]["effective_context_window_percent"] != json.Number("95") {
+		t.Errorf("a user's 95: %v", got.Models[0]["effective_context_window_percent"])
 	}
 }

@@ -1,5 +1,7 @@
 /magpie
 /magpie.exe
+/magpie-context.exe
+/magpie-test.exe
 /magpie.app/
 /dist/
 /magpie-dev

@@ -11,14 +11,14 @@ import (
 )
 
 // Codex is told the threshold the user set (#876, hisiling: 272K was the
-// only one): a model's own or its provider's before the one for every
-// model, which may be any size too; one at or above the window is the
-// whole window, and Full window still runs the rest to theirs.
+// only one) separately from the model's context capacity: context_window
+// stays the whole window and auto_compact_token_limit says where to compact.
+// A threshold at or above the window leaves auto compaction unset.
 func TestCodexCatalogCompactAt(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("USERPROFILE", os.Getenv("HOME"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(os.Getenv("HOME"), ".config"))
-	windows := func() map[string][2]any {
+	windows := func() map[string][3]any {
 		var got struct {
 			Models []map[string]any `json:"models"`
 		}
@@ -28,13 +28,13 @@ func TestCodexCatalogCompactAt(t *testing.T) {
 			{ID: "x/big", Name: "big", Context: 1000000},
 			{ID: "x/small", Name: "small", Context: 128000},
 		}), &got)
-		out := map[string][2]any{}
+		out := map[string][3]any{}
 		for _, e := range got.Models {
-			out[e["slug"].(string)] = [2]any{e["context_window"], e["max_context_window"]}
+			out[e["slug"].(string)] = [3]any{e["context_window"], e["max_context_window"], e["auto_compact_token_limit"]}
 		}
 		return out
 	}
-	check := func(what string, want map[string][2]any) {
+	check := func(what string, want map[string][3]any) {
 		t.Helper()
 		got := windows()
 		for id, w := range want {
@@ -43,25 +43,25 @@ func TestCodexCatalogCompactAt(t *testing.T) {
 			}
 		}
 	}
-	check("default", map[string][2]any{
-		"d/flash": {float64(500000), float64(1000000)},
-		"d/pro":   {float64(1000000), nil},
-		"x/big":   {float64(settings.WorkingWindow), float64(1000000)},
-		"x/small": {float64(128000), nil},
+	check("default", map[string][3]any{
+		"d/flash": {float64(1000000), nil, float64(500000)},
+		"d/pro":   {float64(1000000), nil, nil},
+		"x/big":   {float64(1000000), nil, float64(settings.WorkingWindow)},
+		"x/small": {float64(128000), nil, nil},
 	})
 	if err := settings.Save(settings.Settings{CompactAt: 400000}); err != nil {
 		t.Fatal(err)
 	}
-	check("compact at 400K", map[string][2]any{
-		"d/flash": {float64(500000), float64(1000000)},
-		"x/big":   {float64(400000), float64(1000000)},
-		"x/small": {float64(128000), nil},
+	check("compact at 400K", map[string][3]any{
+		"d/flash": {float64(1000000), nil, float64(500000)},
+		"x/big":   {float64(1000000), nil, float64(400000)},
+		"x/small": {float64(128000), nil, nil},
 	})
 	if err := settings.Save(settings.Settings{CompactAt: 400000, FullContext: true}); err != nil {
 		t.Fatal(err)
 	}
-	check("full window", map[string][2]any{
-		"d/flash": {float64(500000), float64(1000000)},
-		"x/big":   {float64(1000000), nil},
+	check("full window", map[string][3]any{
+		"d/flash": {float64(1000000), nil, float64(500000)},
+		"x/big":   {float64(1000000), nil, nil},
 	})
 }

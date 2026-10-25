@@ -138,11 +138,19 @@ type model struct {
 	Tools      []string `json:"experimental_supported_tools"`
 	Modalities []string `json:"input_modalities"`
 	Context    *int     `json:"context_window,omitempty"`
-	// the model's whole window when Context is the working one
-	// (settings.Working): Codex's model_context_window may raise it
-	// that far, as it does OpenAI's own models'
-	MaxContext *int   `json:"max_context_window,omitempty"`
-	Tiers      []tier `json:"service_tiers"`
+	// the most Codex may raise Context to with model_context_window. A
+	// model's own entry says OpenAI's list value; magpie's own entries
+	// usually leave it out because Context is already the whole window.
+	MaxContext *int `json:"max_context_window,omitempty"`
+	// AutoCompact is where Codex compacts a long conversation. It is
+	// separate from Context: a model can take 1M tokens and compact at
+	// 272K without telling Codex that its context ends at 272K.
+	AutoCompact *int `json:"auto_compact_token_limit,omitempty"`
+	// EffectiveContext is the share of Context Codex treats as usable.
+	// Codex defaults an entry that omits it to 95%; magpie writes 100 so
+	// the window it declares is the window Codex uses.
+	EffectiveContext int    `json:"effective_context_window_percent,omitempty" keep:"user"`
+	Tiers            []tier `json:"service_tiers"`
 	// Without the search, Codex puts every MCP tool's schema (a
 	// ChatGPT sign-in's apps' among them) in every request, 190K
 	// tokens before the first word (#258); with it, they are named in
@@ -191,6 +199,58 @@ func Entries(ms []catalog.Model, after int) []any {
 	return entriesAt(ms, after, NewSessionEffort())
 }
 
+// WindowOf is the context window, and the most Codex may raise it to, that
+// the final catalog entry for id carries: the model's whole window, not its
+// compaction threshold. ok is false when id has no entry or the entry gives
+// no window.
+func WindowOf(ms []catalog.Model, id string) (window, most int, ok bool) {
+	for _, e := range Entries(ms, 0) {
+		switch e := e.(type) {
+		case *model:
+			if e.Slug != id || e.Context == nil {
+				continue
+			}
+			if e.MaxContext != nil {
+				most = *e.MaxContext
+			}
+			return *e.Context, most, *e.Context > 0
+		case map[string]any:
+			if slug, _ := e["slug"].(string); slug != id {
+				continue
+			}
+			return WindowOfEntry(e)
+		}
+	}
+	return 0, 0, false
+}
+
+// WindowOfEntry reads the context window and maximum from one final catalog
+// entry, in the shape Codex's own models_cache.json uses.
+func WindowOfEntry(e map[string]any) (window, most int, ok bool) {
+	window, ok = windowNumber(e["context_window"])
+	if !ok || window <= 0 {
+		return 0, 0, false
+	}
+	if n, yes := windowNumber(e["max_context_window"]); yes && n > 0 {
+		most = n
+	}
+	return window, most, true
+}
+
+// windowNumber reads a window field from one of Codex's own entries, which
+// came through models_cache.json and therefore carries JSON numbers.
+func windowNumber(v any) (int, bool) {
+	switch n := v.(type) {
+	case int:
+		return n, true
+	case int64:
+		return int(n), true
+	case float64:
+		return int(n), n >= 0
+	}
+	return 0, false
+}
+
 func entriesAt(ms []catalog.Model, after int, effort string) []any {
 	own := CacheEntries()
 	v1 := V1()
@@ -216,7 +276,8 @@ func entriesAt(ms []catalog.Model, after int, effort string) []any {
 			Shell: "unified_exec", Visibility: "list", InAPI: true, Priority: after + i + 1,
 			ApplyPatch: "freeform", Tools: []string{}, Modalities: []string{"text"},
 			Tiers: []tier{}, SearchTool: true, Parallel: true,
-			AutoReview: work.CodexAutoReview,
+			EffectiveContext: 100,
+			AutoReview:       work.CodexAutoReview,
 		}
 		// Fast mode: a ChatGPT account's GPT model Codex has no entry for,
 		// or a group one is in, gets the tier Codex's own catalog gives its
@@ -248,15 +309,17 @@ func entriesAt(ms []catalog.Model, after int, effort string) []any {
 			e.Description = m.Name + " (text only: Accepts images is in its provider's Names & levels in magpie) via magpie"
 		}
 		if c := m.Context; c > 0 {
-			// the model's or its provider's threshold, else the one for
-			// every model (#876); one at or above c is its whole window
+			// The catalog declares the model's capacity. The threshold the
+			// user set (or magpie's working window) goes in Codex's own
+			// auto_compact_token_limit field, so Codex still compacts before
+			// the whole window without misreporting how much the model holds.
 			w := work.Working(c)
 			if m.Compact > 0 {
 				w = min(c, m.Compact)
 			}
-			e.Context = &w
+			e.Context = &c
 			if w < c {
-				e.MaxContext = &c
+				e.AutoCompact = &w
 			}
 		}
 		e.Truncation.Mode, e.Truncation.Limit = "tokens", 10000
@@ -277,10 +340,12 @@ func entriesAt(ms []catalog.Model, after int, effort string) []any {
 // owned are the keys of an entry magpie writes, or leaves out on purpose:
 // every field of model, and the two ownEntry takes out of Codex's own.
 // keepTrue are those of them where a true the user set by hand stays over
-// magpie's false (keep:"true").
-var owned, keepTrue = func() (own, yes map[string]bool) {
+// magpie's false (keep:"true"); keepUser are those where a value that
+// differs from magpie's stays (keep:"user").
+var owned, keepTrue, keepUser = func() (own, yes, user map[string]bool) {
 	own = map[string]bool{"availability_nux": true, "upgrade": true}
 	yes = map[string]bool{}
+	user = map[string]bool{}
 	t := reflect.TypeFor[model]()
 	for i := range t.NumField() {
 		f := t.Field(i)
@@ -291,9 +356,11 @@ var owned, keepTrue = func() (own, yes map[string]bool) {
 		own[name] = true
 		if f.Tag.Get("keep") == "true" {
 			yes[name] = true
+		} else if f.Tag.Get("keep") == "user" {
+			user[name] = true
 		}
 	}
-	return own, yes
+	return own, yes, user
 }()
 
 // Keep is the catalog b, as Catalog renders it, with what the user added by
@@ -301,9 +368,10 @@ var owned, keepTrue = func() (own, yes map[string]bool) {
 // over: a key of an entry of the same slug that magpie doesn't own, and a
 // true where magpie says false of a keepTrue key — supports_reasoning_
 // summaries, put in for Codex to send a model's effort and show its
-// thinking (#1450). Another key magpie writes takes magpie's value; the
-// entry of a model magpie no longer serves goes. b as it is when there is
-// nothing to keep, or cur isn't a catalog.
+// thinking (#1450) — and a keepUser key whose value differs from magpie's
+// (the percentage of a window Codex may use). Another key magpie writes
+// takes magpie's value; the entry of a model magpie no longer serves goes.
+// b as it is when there is nothing to keep, or cur isn't a catalog.
 func Keep(cur, b []byte) []byte {
 	type list struct {
 		Models []map[string]any `json:"models"`
@@ -317,6 +385,16 @@ func Keep(cur, b []byte) []byte {
 	if len(cur) == 0 || read(cur, &was) != nil {
 		return b
 	}
+	var now list
+	if read(b, &now) != nil {
+		return b
+	}
+	target := map[string]map[string]any{}
+	for _, e := range now.Models {
+		if slug, _ := e["slug"].(string); slug != "" {
+			target[slug] = e
+		}
+	}
 	add := map[string]map[string]any{}
 	for _, e := range was.Models {
 		slug, _ := e["slug"].(string)
@@ -324,7 +402,7 @@ func Keep(cur, b []byte) []byte {
 			continue
 		}
 		for k, v := range e {
-			if !owned[k] || keepTrue[k] && v == true {
+			if !owned[k] || keepTrue[k] && v == true || keepUser[k] && !reflect.DeepEqual(v, target[slug][k]) {
 				if add[slug] == nil {
 					add[slug] = map[string]any{}
 				}
@@ -335,15 +413,11 @@ func Keep(cur, b []byte) []byte {
 	if len(add) == 0 {
 		return b
 	}
-	var now list
-	if read(b, &now) != nil {
-		return b
-	}
 	kept := false
 	for _, e := range now.Models {
 		slug, _ := e["slug"].(string)
 		for k, v := range add[slug] {
-			if was, ok := e[k]; !ok || keepTrue[k] && was != true {
+			if was, ok := e[k]; !ok || keepTrue[k] && was != true || keepUser[k] && !reflect.DeepEqual(was, v) {
 				e[k], kept = v, true
 			}
 		}

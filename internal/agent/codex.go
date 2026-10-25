@@ -385,6 +385,16 @@ func codexIn(at place) *Agent {
 		}
 		return catalog.Codex()
 	}
+	// syncWindow keeps Codex's top-level model_context_window on the
+	// selected model's final catalog window, or removes magpie's value
+	// when that window is unknown. It is a compatibility mirror: the
+	// catalog's per-model window stays the source of truth.
+	syncWindow := func() error {
+		if !routed() {
+			return restoreTopWindow(path, at.key("codex.context_window"))
+		}
+		return syncTopWindow(path, at.key("codex.context_window"), models(), get("model"))
+	}
 	// relist hands Codex its models again after the effort new sessions
 	// start at changed, which their default efforts follow: magpie's
 	// catalog written again, or the list the gateway hands Codex beside
@@ -520,7 +530,7 @@ func codexIn(at place) *Agent {
 			return err
 		}
 		dropList()
-		return nil
+		return restoreTopWindow(path, at.key("codex.context_window"))
 	}
 	// bringBack moves the threads started while magpie was Codex's
 	// provider (model_provider "magpie") onto the provider Codex is on now,
@@ -998,6 +1008,9 @@ func codexIn(at place) *Agent {
 			return "", err
 		}
 		if !routed() {
+			if err := restoreTopWindow(path, at.key("codex.context_window")); err != nil {
+				return "", err
+			}
 			return "", nil
 		}
 		if err := dropSubagent(); err != nil {
@@ -1027,6 +1040,9 @@ func codexIn(at place) *Agent {
 				return "", err
 			}
 		}
+		if err := restoreTopWindow(path, at.key("codex.context_window")); err != nil {
+			return "", err
+		}
 		return was, nil
 	}
 	set := func(v string) error {
@@ -1048,6 +1064,9 @@ func codexIn(at place) *Agent {
 				return err
 			}
 			dropList()
+			if err := restoreTopWindow(path, at.key("codex.context_window")); err != nil {
+				return err
+			}
 			forget(at.key("codex.model"), at.key("codex.effort"), at.key("codex.provider"), at.key("codex.catalog"), at.key("codex.out"), at.key("codex.joined"), at.key("codex.beside"))
 			return nil
 		}
@@ -1101,7 +1120,10 @@ func codexIn(at place) *Agent {
 				if err := takeTables(); err != nil {
 					return err
 				}
-				return settle()
+				if err := settle(); err != nil {
+					return err
+				}
+				return syncWindow()
 			}
 			if chatgpt {
 				stash(map[string]string{at.key("codex.out"): "1"})
@@ -1135,7 +1157,10 @@ func codexIn(at place) *Agent {
 			if err := takeTables(); err != nil {
 				return err
 			}
-			return settle()
+			if err := settle(); err != nil {
+				return err
+			}
+			return syncWindow()
 		}
 		// joined, a model of Codex's own is picked beside magpie's, as in
 		// Codex's /model: it stays connected
@@ -1143,7 +1168,10 @@ func codexIn(at place) *Agent {
 			if err := edit.SetTOMLTop(path, edit.KV{Path: "model", Value: v}); err != nil {
 				return err
 			}
-			return settle()
+			if err := settle(); err != nil {
+				return err
+			}
+			return syncWindow()
 		}
 		if _, err := unroute(); err != nil {
 			return err
@@ -1154,7 +1182,10 @@ func codexIn(at place) *Agent {
 		if err := failover(); err != nil {
 			return err
 		}
-		return settle()
+		if err := settle(); err != nil {
+			return err
+		}
+		return syncWindow()
 	}
 
 	a := atomic(&Agent{
@@ -1194,7 +1225,10 @@ func codexIn(at place) *Agent {
 			}
 			// and are listed where Codex now is
 			bringBack()
-			return settle()
+			if err := settle(); err != nil {
+				return err
+			}
+			return syncWindow()
 		},
 		// signed in with ChatGPT, Codex reaches magpie by the base URL with
 		// its own models still there: connected so, it stays on the model it
@@ -1235,7 +1269,10 @@ func codexIn(at place) *Agent {
 			if err := codexStaleCache(filepath.Join(dir, "models_cache.json"), provider.CodexListTag()); err != nil {
 				return false, err
 			}
-			return true, settle()
+			if err := settle(); err != nil {
+				return false, err
+			}
+			return true, syncWindow()
 		},
 		// joined as the GUI and drift tell it: Codex's own models in its
 		// list beside magpie's. With magpie its provider (magpie API, or a
@@ -1252,12 +1289,23 @@ func codexIn(at place) *Agent {
 			if !failingOver() {
 				return nil
 			}
-			return errors.Join(dropMirrorFailover(), dropBase())
+			if err := errors.Join(dropMirrorFailover(), dropBase()); err != nil {
+				return err
+			}
+			// Failover is no longer a route to magpie: restore the user's
+			// window, or take away the mirror magpie wrote for it.
+			return restoreTopWindow(path, at.key("codex.context_window"))
 		},
 		OwnVia: codexOwnViaMagpie,
-		Sync: func() error {
+		Sync: func() (err error) {
 			// after the sync, which may have put Codex back beside its
-			// sign-in, and whatever it failed at
+			// sign-in, and whatever it failed at. Window sync is registered
+			// first so it runs after bringBack, against the final route.
+			defer func() {
+				if err == nil {
+					err = syncWindow()
+				}
+			}()
 			defer bringBack()
 			// model_catalog_json naming magpie's list with the list gone,
 			// as an older magpie's Disconnect could leave it (zwaydot on

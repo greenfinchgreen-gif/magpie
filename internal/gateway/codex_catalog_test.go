@@ -33,6 +33,8 @@ type codexModelInfo struct {
 		Limit int    `json:"limit"`
 	} `json:"truncation_policy"`
 	Tools *[]string `json:"experimental_supported_tools"`
+	// Codex users the window at 95% when this is absent (0.164).
+	EffectiveContext *int `json:"effective_context_window_percent"`
 }
 
 // A Codex on another computer that names magpie its model_provider, with a
@@ -86,7 +88,8 @@ func TestCodexCatalogForAGatewayKey(t *testing.T) {
 		for _, m := range list.Models {
 			if m.Slug == nil || m.DisplayName == nil || m.BaseInstructions == nil || *m.BaseInstructions == "" ||
 				m.Levels == nil || m.ShellType == nil || m.Visibility == nil || m.SupportedInAPI == nil ||
-				m.Priority == nil || m.Verbosity == nil || m.Truncation == nil || m.Tools == nil {
+				m.Priority == nil || m.Verbosity == nil || m.Truncation == nil || m.Tools == nil ||
+				m.EffectiveContext == nil || *m.EffectiveContext != 100 {
 				t.Fatalf("an entry Codex can't read: %s", b)
 			}
 			if slices.Contains(out, *m.Slug) {
