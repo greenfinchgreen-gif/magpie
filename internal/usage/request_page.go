@@ -402,17 +402,28 @@ func rowsIn(c *rowChunk) int {
 // chunk. Its strings' and shapes' slices are reused the same way.
 type chunkRows struct {
 	c, open *rowChunk
-	buf     []packedRow
-	strs    []string
-	shapes  [][rowTexts]uint32
 	// lent: the strings are of the decoded block, not a copy of them, and
 	// the next chunk is decoded over them. For a pass that keeps nothing of
 	// a row past the next chunk, and clones a string it keeps: the passes
 	// that pair a page's calls copied every chunk's strings five times,
 	// ~250 MB of a warm start's page (#3493).
-	lent    bool
-	decoded []byte
+	lent bool
+	b    *rowBuffer
 }
+
+// rowBuffer is what a chunkRows decodes into, kept between passes
+// (rowBuffers): each of a page's passes over every chunk grew its own from
+// nothing, and a warm start's page and Codex's effort after it allocated
+// ~30 MB a pass to read the same rows (#3493).
+type rowBuffer struct {
+	rows    []packedRow
+	strs    []string
+	shapes  [][rowTexts]uint32
+	decoded []byte
+	open    rowChunk
+}
+
+var rowBuffers = sync.Pool{New: func() any { return new(rowBuffer) }}
 
 // lentRows is a chunkRows whose strings are lent (chunkRows.lent).
 func lentRows() chunkRows { return chunkRows{lent: true} }
@@ -424,27 +435,43 @@ func (r *chunkRows) of(c *rowChunk) *rowChunk {
 		return c
 	}
 	if r.c != c {
+		if r.b == nil {
+			r.b = rowBuffers.Get().(*rowBuffer)
+		}
+		b := r.b
 		var lent *[]byte
 		if r.lent {
-			lent = &r.decoded
+			lent = &b.decoded
 		}
-		open := c.unpackReusing(r.buf, r.strs, r.shapes, lent)
+		open := c.unpackReusing(&b.open, b.rows, b.strs, b.shapes, lent)
 		if open == nil { // never written so: pack wrote it in this process
-			open = &rowChunk{Source: c.Source, Computer: c.Computer}
+			b.open = rowChunk{Source: c.Source, Computer: c.Computer}
+			open = &b.open
 		}
-		if cap(open.Rows) > cap(r.buf) {
-			r.buf = open.Rows[:0]
+		if cap(open.Rows) > cap(b.rows) {
+			b.rows = open.Rows[:0]
 		}
-		if cap(open.Strings) > cap(r.strs) {
-			r.strs = open.Strings[:0]
+		if cap(open.Strings) > cap(b.strs) {
+			b.strs = open.Strings[:0]
 		}
-		if cap(open.Shapes) > cap(r.shapes) {
-			r.shapes = open.Shapes[:0]
+		if cap(open.Shapes) > cap(b.shapes) {
+			b.shapes = open.Shapes[:0]
 		}
 		r.c, r.open = c, open
 	}
 	r.open.codexActors, r.open.codexCompactions, r.open.codexIdentities = c.codexActors, c.codexCompactions, c.codexIdentities
 	return r.open
+}
+
+// release hands r's buffers on to the next pass. Nothing r opened is read
+// after: a lent string kept from it is a clone, and a row a copy.
+func (r *chunkRows) release() {
+	if b := r.b; b != nil {
+		b.open = rowChunk{}
+		clear(b.strs[:cap(b.strs)]) // the strings of a block not lent are its own
+		r.b, r.c, r.open = nil, nil, nil
+		rowBuffers.Put(b)
+	}
 }
 
 func (r *chunkRows) row(ref rowRef) Row { return r.of(ref.Chunk).row(ref.Index) }
@@ -457,6 +484,7 @@ func rowsOf(chunks []*rowChunk, refs []rowRef) map[rowRef]Row {
 		byChunk[ref.Chunk] = append(byChunk[ref.Chunk], ref.Index)
 	}
 	var rows chunkRows
+	defer rows.release()
 	for _, c := range chunks {
 		indexes, ok := byChunk[c]
 		if !ok {
@@ -1113,6 +1141,7 @@ func visibleLocal(chunks []*rowChunk) map[rowRef]bool {
 	duplicates := map[rowRef]bool{}
 	seen := map[string]bool{}
 	rows := lentRows() // a kept message id is cloned
+	defer rows.release()
 	for _, c := range chunks {
 		open := rows.of(c)
 		for i := range open.Rows {
@@ -1205,6 +1234,7 @@ func matchedBlocks(gateways []*rowChunk, chunks []*rowChunk, skip map[rowRef]boo
 	}
 	byRequest := map[string][]timedRef{}
 	rows := lentRows() // a kept request id is cloned; a key is looked up
+	defer rows.release()
 	for _, c := range chunks {
 		open := rows.of(c)
 		for i := range open.Rows {
@@ -1462,6 +1492,7 @@ func pairRows(p Period, now time.Time, gateways, chunks, others []*rowChunk, ide
 // visit calls fn with each row of the period that no other one stands for.
 func (ps *pairedRows) visit(fn func(timedRef, *Row)) {
 	var rows chunkRows
+	defer rows.release()
 	// one row for the visit, written over for each: fn is not known
 	// here, so a row of each would be an allocation of its own, and fn
 	// keeps none of them

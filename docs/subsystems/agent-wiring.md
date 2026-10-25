@@ -167,11 +167,31 @@ and seven runtime targets. Only loopback HTTP gateways are offered; the key
 is always the public attribution token `magpie-lody`, never a LAN secret.
 With `MAGPIE_ADDR` pinned beyond loopback there is no link: the row has no
 button, and `magpie lody add` says why and opens nothing
-(`TestLodyLinkCarriesNoSecret`). The OS chooses the installed Lody handler. A compatible Lody build must
-implement this import route.
+(`TestLodyLinkCarriesNoSecret`). On macOS and Windows the OS chooses the
+installed Lody handler: Lody's bundle and installer claim `lody://`. On
+Linux `agent.OpenLody` runs Lody itself with the link, as its desktop
+entry's Exec says (`ai.lody.desktop.desktop`, then Nightly's
+`ai.lody.desktop.nightly.desktop` and OSS's `dev.loro.lody.oss.desktop`,
+in `$XDG_DATA_HOME/applications` before `$XDG_DATA_DIRS`): Lody's AppImage
+writes that entry at each start but makes itself the default only for its
+channel's scheme (`ai.lody.stable`), so `lody://` reaches it only through
+a desktop database that nothing builds without `update-desktop-database`,
+and xdg-open's gio answers "Operation not supported" while Lody runs
+(Atlas, 10-25). A second Lody hands the link to the running one. With no
+entry whose program is there, the link goes to xdg-open as before
+(`TestOpenLodyRunsItsDesktopEntry`, `TestLodyImportRunsLodyOnLinux`). The
+web page opens the link from the browser and is not covered. A compatible
+Lody build must implement this import route.
 
 Lody asks which Providers to add, names them with `-magpie`, and writes only
-to the current desktop's local machine after confirmation. Magpie does not
+to the current desktop's local machine after confirmation (Lody 0.108.1:
+the import's machine is always the desktop's own, and its link names no
+other). So a machine Lody Desktop reaches as a remote, one that runs only
+Lody's command-line agent, takes no import from magpie running there:
+nothing on it opens `lody://`, and a link opened on the desktop's computer
+would point that computer's agents at its own loopback. Lody Desktop
+opened on that machine itself shares the agent's `~/.lody/machine-id`, so
+the import lands on the same machine (Atlas, 10-25). Magpie does not
 read or write Lody's private document store, select models there, or claim
 that opening the link completed the import. Lody exposes no public status
 reader: `Agent.Added` remains nil and the JSON row omits `added`. The GUI

@@ -515,12 +515,41 @@ func callText(c *Call) [13]*string {
 	return [13]*string{&c.Agent, &c.Session, &c.ThreadID, &c.Model, &c.Requested, &c.Effort, &c.Cwd, &c.Upstream, &c.AccountID, &c.UserID, &c.Error, &c.ErrorText, &c.File}
 }
 
+// frameBuffer is what loadCalls reads a shard's frames into, kept between
+// shards: a cold Requests build reads every one of ~15.6k, and a new
+// buffer, slice of patches and slice of strings for each frame came to
+// ~400 MB of it (#3493). Nothing read out of a frame points into these:
+// gob copies every string and byte slice out of its input, and a patch's
+// call is copied into the file's calls.
+type frameBuffer struct {
+	data []byte
+	f    callFrame
+}
+
+var frameBuffers = sync.Pool{New: func() any { return new(frameBuffer) }}
+
+// frame is k's frame emptied for the next to be decoded into it. gob
+// leaves out a field of the zero value and leaves the field it decodes
+// into as it was, so a patch or string is cleared from the last frame,
+// not only cut off: a reused slice is decoded into in place.
+func (k *frameBuffer) frame() *callFrame {
+	clear(k.f.Patches)
+	clear(k.f.Strings)
+	k.f = callFrame{Strings: k.f.Strings[:0], Patches: k.f.Patches[:0]}
+	return &k.f
+}
+
 func loadCalls(f file) *callFile {
 	in, err := os.Open(callCachePath(f.path))
 	if err != nil {
 		return nil
 	}
 	defer in.Close()
+	k := frameBuffers.Get().(*frameBuffer)
+	defer func() {
+		k.frame() // the pool holds no file's strings
+		frameBuffers.Put(k)
+	}()
 	var st *callFile
 	var calls []Call
 	msgs := map[string]int{}
@@ -538,12 +567,17 @@ func loadCalls(f file) *callFile {
 		if size == 0 || size > 256<<20 {
 			return nil
 		}
-		data := make([]byte, int(size))
+		data := k.data[:0]
+		if cap(data) < int(size) {
+			data = make([]byte, int(size))
+		}
+		data = data[:size]
+		k.data = data
 		if _, err = io.ReadFull(in, data); err != nil || crc32.ChecksumIEEE(data) != binary.LittleEndian.Uint32(header[4:]) {
 			return nil
 		}
-		var frame callFrame
-		if decodeFrame(data, &frame) != nil || frame.State.Path != f.path || frame.State.Agent != f.agent {
+		frame := k.frame()
+		if decodeFrame(data, frame) != nil || frame.State.Path != f.path || frame.State.Agent != f.agent {
 			return nil
 		}
 		if st != nil && frame.State.Off < st.Off {

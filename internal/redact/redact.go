@@ -152,12 +152,58 @@ var rules = append([]rule{
 	// code calls anything a key: a map's "key": "value", sort_key, keyboard.
 	{kind: "SECRET", re: regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9_.-])` + quote + `key` + quote + `[ \t]*[:=][ \t]*` + quote + `(` + secretCh + `{16,})`),
 		markers: fieldNames{{"key", "key"}}.markers(), ok: secretValue, at: notCode},
+	// a password after its name in Chinese, Japanese or Korean, as people
+	// write one into a message: 密码：786kih, 密碼是 hunter2, パスワード: … .
+	// Unlike password = in a config, nothing in code is called 密码, so
+	// any value of four or more is taken, digits only too (CyberCaius on
+	// Discord); a sentence's closing stop is no part of it.
+	{kind: "PASSWORD", re: cjkNamed(cjkPasswordNames), fold: lowerAll(cjkPasswordNames), back: 64, ahead: 100, ok: notAVariable},
+	// a key, a secret or a token after its name the same way: 密钥为 …,
+	// 令牌是 …, 金鑰： … . A key is no number, so 密钥为 2048 位 is left.
+	{kind: "SECRET", re: cjkNamed(cjkKeyNames), fold: lowerAll(cjkKeyNames), back: 64, ahead: 100, ok: keyValue},
+	// an English name for one before 为, 為, 是 or ：, as a Chinese message
+	// has it: apikey 为 …, token 是 …, API Key：… (CyberCaius on Discord).
+	// password = … and API_KEY: … in a config are the SECRET rule's above.
+	{kind: "SECRET", re: regexp.MustCompile(`(?i)(?:` + secretNames.pattern() + `|pwd|api[ ]key|access[ ]key|secret[ ]key|key)` + quote +
+		`[ \t]*(?:[为為是][ \t]*[:：]?|：)[ \t]*(?:\\?["'“「])?(` + secretCh + `{3,}[A-Za-z0-9_\-/+=~!@#%^&*])`),
+		fold: cjkCopulas, back: 24, ahead: 260, ok: keyValue},
 
 	{kind: "EMAIL", re: regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}`), markers: []string{"@"}, bound: alnum + "._%+-", ok: realEmail, at: notUserinfo, cat: catPersonal},
 	{kind: "ID_CARD", re: regexp.MustCompile(`[1-9]\d{5}(?:18|19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx]`), bound: alnum, ok: chineseID, cat: catPersonal},
 	{kind: "PHONE", re: regexp.MustCompile(`(?:\+?86[- ]?)?1[3-9]\d{9}`), bound: digits, cat: catPersonal},
 	{kind: "BANK_CARD", re: regexp.MustCompile(`[3-6]\d{3}(?:[ -]?\d{4}){2,3}(?:[ -]?\d{1,3})?`), bound: digits, ok: luhn, cat: catPersonal},
 }, moreRules...)
+
+// cjkPasswordNames are what a password is called in Chinese, Japanese and
+// Korean.
+var cjkPasswordNames = []string{"密码", "密碼", "口令", "パスワード", "비밀번호", "암호"}
+
+// cjkKeyNames are what a key, a secret or a token is called in Chinese,
+// Simplified and Traditional, Japanese and Korean.
+var cjkKeyNames = []string{
+	"密钥", "密鑰", "秘钥", "秘鑰", "私钥", "私鑰", "金钥", "金鑰", "令牌", "权杖", "權杖",
+	"秘密鍵", "トークン", "シークレット", "APIキー", "アクセスキー",
+	"토큰", "비밀키", "API 키", "API키",
+}
+
+// cjkCopulas are what stands between a name and its value in a Chinese
+// message: 为, 為, 是, a full-width colon.
+var cjkCopulas = []string{"为", "為", "是", "："}
+
+// lowerAll is names as fold has them, in lower case.
+func lowerAll(names []string) []string {
+	out := make([]string, len(names))
+	for i, n := range names {
+		out[i] = strings.ToLower(n)
+	}
+	return out
+}
+
+// cjkNamed is a value after one of names: after ：, :, =, 为, 為, 是, は
+// or 는, quoted or not, or after nothing but a space.
+func cjkNamed(names []string) *regexp.Regexp {
+	return regexp.MustCompile(`(?:` + strings.Join(names, "|") + `)[ \t]*(?:[:：=][ \t]*|[为為是][ \t]*[:：]?[ \t]*|は[ \t]*|는[ \t]*)?(?:\\?["'“「])?(` + secretCh + `{3,63}[A-Za-z0-9_\-/+=~!@#%^&*])`)
+}
 
 // fieldNames are what a field that holds a secret is called: a pattern for
 // each name, and text that any match of it has in it, so a rule's markers
@@ -213,6 +259,17 @@ func notAVariable(v string) bool {
 		return false
 	}
 	return strings.Trim(v, "*xX.") != ""
+}
+
+// keyValue is a key's or a token's value, not a word or a number: letters
+// and digits both, or 16 characters or more that aren't all digits. token 是
+// expired, key 是 value and 密钥为 2048 are left.
+func keyValue(v string) bool {
+	if !notAVariable(v) {
+		return false
+	}
+	letter := strings.IndexFunc(v, func(r rune) bool { return r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z' }) >= 0
+	return letter && (strings.ContainsAny(v, digits) || len(v) >= 16)
 }
 
 // secretValue is a value that looks like a secret, not code: letters and
@@ -823,10 +880,14 @@ func (r rule) matches(s, lower string) [][]int {
 			i = at + len(f)
 			// from the line's start, or from where a word starts no further
 			// back than back: what the pattern takes for the text's start is
-			// where a line or a word starts in s too
-			start := strings.LastIndexByte(s[:at], '\n') + 1
-			if start < at-r.back {
-				start = at - r.back
+			// where a line or a word starts in s too. The line's start is
+			// looked for no further back than that: a text of one long
+			// line, as a request body is, isn't read back to its start for
+			// each marker.
+			start := max(0, at-r.back)
+			if nl := strings.LastIndexByte(s[start:at], '\n'); nl >= 0 {
+				start += nl + 1
+			} else if start > 0 {
 				for start < at && (strings.IndexByte(alnum+"_.-", s[start-1]) >= 0 || s[start]&0xc0 == 0x80) {
 					start++
 				}

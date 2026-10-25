@@ -478,7 +478,12 @@ func run(args []string) error {
 				// Lody takes only a gateway on this computer's loopback
 				return fmt.Errorf("%s takes magpie only at a loopback address, and the gateway is at %s: nothing was opened", a.Name, gateway.URL())
 			}
-			openInBrowser(link)
+			if a.ID == "lody" {
+				// Lody on Linux is run with the link (agent.OpenLody)
+				_ = agent.OpenLody(link, func(u string) error { openInBrowser(u); return nil })
+			} else {
+				openInBrowser(link)
+			}
 			fmt.Println(green.Render("✓"), bold.Render(a.Name), muted.Render("opened to add magpie — confirm it there"))
 			fmt.Println(muted.Render("  " + link))
 			return nil

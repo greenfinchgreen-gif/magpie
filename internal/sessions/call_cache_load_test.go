@@ -39,3 +39,41 @@ func TestLoadedCallsAreSizedOnce(t *testing.T) {
 		t.Fatal("appended calls not read back")
 	}
 }
+
+// Shards are read one after another into one kept frame, and gob leaves a
+// field of the zero value out: a call read after one that had a value
+// there has none, not the last shard's.
+func TestLoadedCallsKeepNothingOfTheLastShard(t *testing.T) {
+	d := setupCalls(t)
+	write := func(name string, c Call, began time.Time) string {
+		path := filepath.Join(d.claude, "projects", "p", name+".jsonl")
+		c.Msg = "msg-" + name
+		st := &callFile{Path: path, Agent: "claude", Calls: []Call{c}, Began: map[string]time.Time{}}
+		if !began.IsZero() {
+			st.Began[c.Msg] = began
+		}
+		writeCalls(st, 0, false)
+		return path
+	}
+	full := write("full", Call{Time: time.Unix(100, 0), Agent: "claude", Session: "s1", Model: "claude-opus-5-5",
+		Tokens: Tokens{Input: 50, Output: 7, CacheRead: 9}, Compaction: true}, time.Unix(90, 0))
+	bareCall := Call{Time: time.Unix(200, 0), Agent: "claude"}
+	empty := write("empty", bareCall, time.Time{})
+	for range 3 {
+		if got := loadCalls(file{path: full, agent: "claude"}); got == nil || got.Calls[0].Input != 50 || !got.Calls[0].Compaction {
+			t.Fatal("the full shard not read back")
+		}
+		got := loadCalls(file{path: empty, agent: "claude"})
+		if got == nil || len(got.Calls) != 1 {
+			t.Fatal("the bare shard not read back")
+		}
+		want := bareCall
+		want.Msg, want.File = "msg-empty", empty
+		if c := got.Calls[0]; c.Input != 0 || c.Output != 0 || c.CacheRead != 0 || c.Compaction || c.Session != "" || c.Model != "" || c.Msg != want.Msg || !c.Time.Equal(want.Time) {
+			t.Fatalf("read after the full shard: %+v", c)
+		}
+		if b, ok := got.Began["msg-empty"]; ok {
+			t.Fatalf("began %v kept from the last shard", b)
+		}
+	}
+}
