@@ -635,6 +635,9 @@ func (s *Server) ListenAndServe(ctx context.Context) error {
 	for _, f := range WhileServing {
 		go f(ctx)
 	}
+	// and, on Windows, serves WSL distros under NAT at Windows' address on
+	// their network (wsl.go)
+	go s.serveWSL(ctx, srv)
 	drained := make(chan struct{})
 	go func() {
 		defer close(drained)

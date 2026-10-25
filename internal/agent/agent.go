@@ -278,6 +278,11 @@ type Agent struct {
 	// it where that is kept apart from Gateway (this machine's Codex at an
 	// address of the user's, #816): Drift tries it (see reach.go).
 	reach func() string
+	// reachFrom, when set, tries base from where the agent runs (inside
+	// its WSL distro), as reachable does from here: the last answer, and
+	// whether there is one. A WSL network's address answers from Windows
+	// whatever its firewall lets in from WSL, so only this tells.
+	reachFrom func(base string) (ok, known bool)
 	// move, when set, points the agent's config at to where it names the
 	// gateway at from: an address of WSL's that changed (#1013).
 	move func(from, to string) error
