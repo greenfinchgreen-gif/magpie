@@ -3,7 +3,7 @@
 // download links that never go stale.
 //
 //   /api/latest            {version, notes, url, published, assets: {name: {url, size, sha256}}}
-//   /api/notes?after=&upto= {releases: [{version, notes, url, published}]}, newest
+//   /api/notes?after=&upto=&limit= {releases: [{version, notes, url, published}]}, newest
 //                          first: what changed since the version an app last ran
 //                          Both take ?lang=zh for the notes in Chinese, where a
 //                          release has them (below its <!-- lang:zh --> marker);
@@ -91,8 +91,12 @@ export default {
       if (!got) return json({ error: "no releases" }, 503, NO_STORE);
       const after = url.searchParams.get("after"), upto = url.searchParams.get("upto");
       const lang = url.searchParams.get("lang");
+      // limit: the newest that many alone (Settings' "this version and the
+      // 10 before it", Linka), so an app asking for 11 isn't sent 100
+      const limit = parseInt(url.searchParams.get("limit"), 10);
       const pick = got.list
         .filter((r) => (!after || newer(r.version, after)) && (!upto || !newer(r.version, upto)))
+        .slice(0, limit > 0 ? limit : undefined)
         .map((r) => ({ ...r, notes: inLang(r.notes, lang) }));
       return json({ releases: pick }, 200, cacheFor(got));
     }

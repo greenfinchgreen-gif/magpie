@@ -104,6 +104,16 @@ test("notes: each release in the language, English where it has no Chinese", asy
   assert.equal(again[0].notes, ZH);
 });
 
+test("notes: limit keeps the newest that many up to upto", async () => {
+  const two = (await get("/api/notes?upto=0.1.3&limit=2")).body.releases;
+  assert.deepEqual(two.map((r) => r.version), ["0.1.3", "0.1.2"]);
+  const one = (await get("/api/notes?upto=0.1.2&limit=1")).body.releases;
+  assert.deepEqual(one.map((r) => r.version), ["0.1.2"]);
+  for (const q of ["", "&limit=0", "&limit=x", "&limit=-1"]) {
+    assert.equal((await get("/api/notes?upto=0.1.3" + q)).body.releases.length, 3, q);
+  }
+});
+
 test("i18n: every string the home page marks has its Chinese, and no other", async () => {
   const { readFile } = await import("node:fs/promises");
   const { LANGS } = await import("./i18n.js");

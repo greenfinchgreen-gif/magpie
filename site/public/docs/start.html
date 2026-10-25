@@ -49,6 +49,7 @@
     <a class="toc-only" href="/docs/remote">Remote magpie</a>
     <a class="toc-only" href="/docs/docker">Docker</a>
     <a class="toc-only" href="/docs/privacy">Privacy</a>
+    <a class="toc-only" href="/docs/masking">Privacy masking</a>
     <a href="/docs/import">Add to magpie</a>
     <a href="/docs/integrate">Integrate</a>
     <a href="https://github.com/yetone/magpie-releases/releases">Releases</a>
@@ -290,6 +291,28 @@ magpie claude group/opus-anywhere    <span class="c"># use it</span></pre>
 IP-CIDR6,::1/128,DIRECT,no-resolve</pre>
     </div>
     <p>In a Clash or mihomo config the same lines go under <code>rules:</code>, each starting with <code>- </code>. Then send the agent a new request.</p>
+    <h3 id="dsh-deepseek">Can DeepSeek Harness keep its own DeepSeek row and go through magpie?</h3>
+    <p>Yes, by hand. Connecting dsh adds magpie’s routes and leaves dsh’s DeepSeek row (<code>llm-deepseek</code>) to dsh. That row keeps DeepSeek’s cache when dsh’s prompt or tools change mid-session. To send it through magpie, add this to <code>~/.dsh/profiles/&lt;profile&gt;/cordis.patch.yml</code>:</p>
+    <div class="code">
+      <span class="lang">cordis.patch.yml</span>
+      <button class="copy" data-copy="ex-dsh-deepseek">Copy</button>
+      <pre id="ex-dsh-deepseek">- id: llm-deepseek
+  config:
+    baseURL: http://127.0.0.1:3425
+    apiKeyEnv: MAGPIE_DS_KEY
+    maxInlineRequestImageBytes: 67108864
+    models:
+      - id: deepseek/deepseek-flash
+        name: DeepSeek V4.1 Flash (magpie)
+        contextWindow: 1000000
+        inputModalities: [text, image]
+        systemPromptUpdate: in-history
+        toolUpdate: addition-only
+      - id: deepseek/deepseek-v4-pro
+        name: DeepSeek V4 Pro (magpie)
+        contextWindow: 1000000</pre>
+    </div>
+    <p><code>baseURL</code> has no <code>/anthropic</code>. The model ids are magpie’s (<code>magpie models</code>), and a <code>models</code> list replaces dsh’s defaults, so keep the two update lines. <code>MAGPIE_DS_KEY</code> holds the gateway key (<code>magpie</code> on this computer), not your DeepSeek key: export it, put it in <code>~/.dsh/.env</code>, or enter it on the DeepSeek row in dsh’s Models page. Pick the model in dsh; Disconnect leaves the entry alone. magpie has no Files API, so dsh sends images inline as base64 each turn, up to <code>maxInlineRequestImageBytes</code> (20 MiB by default, 64 MiB above). Keep the row on DeepSeek’s own models. <a href="https://github.com/yetone/magpie/blob/main/docs/reference.md#deepseek-harness-the-deepseek-row-by-hand">More in the reference</a>.</p>
     <p style="margin-top:48px">Stuck, or have a setup worth sharing? Ask on <a href="https://discord.gg/vGSnD3ZKQF">Discord</a>. Vendors who want to hand their users a ready-made provider: see <a href="/docs/import">Add to magpie</a>.</p>
   </article>
 </main>
@@ -303,6 +326,7 @@ IP-CIDR6,::1/128,DIRECT,no-resolve</pre>
     <a href="/docs/remote">Remote magpie</a>
     <a href="/docs/docker">Docker</a>
     <a href="/docs/privacy">Privacy</a>
+    <a href="/docs/masking">Privacy masking</a>
     <a href="/docs/import">Add to magpie</a>
     <a href="/docs/integrate">Integrate</a>
     <a href="https://github.com/yetone/magpie">GitHub</a>

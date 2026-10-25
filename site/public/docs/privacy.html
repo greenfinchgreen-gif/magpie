@@ -49,6 +49,7 @@
     <a class="toc-only" href="/docs/remote">Remote magpie</a>
     <a class="toc-only" href="/docs/docker">Docker</a>
     <a class="toc-only" href="/docs/privacy">Privacy</a>
+    <a class="toc-only" href="/docs/masking">Privacy masking</a>
     <a href="/docs/import">Add to magpie</a>
     <a href="/docs/integrate">Integrate</a>
     <a href="https://github.com/yetone/magpie-releases/releases">Releases</a>
@@ -77,6 +78,7 @@
     <a href="#site">What usemagpie.ai sees</a>
     <a href="#lists">Public lists magpie fetches</a>
     <a href="#otel">OTLP export</a>
+    <a href="#masking">Masking what goes to providers</a>
     <a href="#why">Why the count is on</a>
   </aside>
 
@@ -182,6 +184,22 @@
     <h2 id="otel"><a class="anchor" href="#otel">OTLP export</a></h2>
     <p>magpie can export each gateway request to an OpenTelemetry collector of yours (Langfuse, for example). It is <b>off by default</b>, and goes only to the endpoint you set, never to us. When on, it sends per-request spans: agent, provider, model, token counts, status, timing and estimated cost. Optional switches add metrics, local agent conversations, and the request and reply bodies (secrets masked). Turn it on in <span class="ui">Settings</span> → <span class="ui">Observability</span>, or for <code>magpie serve</code> with <code>MAGPIE_OTEL_ENABLED</code>, <code>MAGPIE_OTEL_ENDPOINT</code>, <code>MAGPIE_OTEL_HEADERS</code>, <code>MAGPIE_OTEL_METRICS</code>, <code>MAGPIE_OTEL_SESSIONS</code>, <code>MAGPIE_OTEL_BODIES</code> and <code>MAGPIE_OTEL_BODIES_WHOLE</code>. An endpoint alone doesn’t turn it on. The <a href="https://github.com/yetone/magpie/blob/main/docs/reference.md#otlp-export">reference</a> has the details.</p>
 
+    <h2 id="masking"><a class="anchor" href="#masking">Masking what goes to providers</a></h2>
+    <p>The sections above are what magpie sends by itself. What your agents send goes to the providers you chose, and <b>privacy masking</b> keeps the secrets in it on this computer. It is <b>off by default</b>; turn it on in <span class="ui">Settings</span> → <span class="ui">Privacy</span>.</p>
+    <figure class="figure">
+      <img class="for-light" src="/img/masking-light.png" width="1912" height="1084" loading="lazy" alt="Insights › Masking: values kept from vendors over 7 days, and each request masking changed">
+      <img class="for-dark" src="/img/masking-dark.png" width="1912" height="1084" loading="lazy" alt="Insights › Masking: values kept from vendors over 7 days, and each request masking changed">
+      <figcaption>Insights › Masking: what was kept from each vendor, request by request.</figcaption>
+    </figure>
+    <ul>
+      <li>Before a request leaves this computer, API keys, private keys, tokens, emails, and card and ID numbers whose checksum adds up become placeholders such as <code>{{API_KEY_k3v9x2mq}}</code>. <span class="ui">Find with a local model</span> adds the names, addresses and passwords no rule can find, with a model that runs on this computer (a 1.6 GB download, on the CPU).</li>
+      <li>Every placeholder in the reply, streamed text and tool-call arguments included, turns back into its value, so your agent and your files keep the real values.</li>
+      <li>A value gets the same placeholder every time, so the conversation and the prompt cache stay valid.</li>
+      <li>Values are held in memory only; the record on disk keeps each value’s kind, length and first characters. If masking is on and can’t run, the request gets a 503 and nothing is sent.</li>
+      <li>The model sees the placeholder, not the value. A value a task needs as it is (a team address, a test key) goes under <span class="ui">Never mask</span>.</li>
+    </ul>
+    <p>How to turn it on, what each switch masks, an example and how to check it: <a href="/docs/masking">Privacy masking</a>.</p>
+
     <h2 id="why"><a class="anchor" href="#why">Why the count is on</a></h2>
     <p>magpie works with dozens of agents and providers, and is maintained by a small team. The daily count is how we know which of them people actually use, so they are kept working first. It is on in releases because counts from those who turn it on would be too few to tell that. In exchange it is kept small: a random id, built-in ids, numbers; one switch or <code>DO_NOT_TRACK=1</code> turns it off, builds from source never send it, and this page lists everything that goes.</p>
   </article>
@@ -197,6 +215,7 @@
     <a href="/docs/remote">Remote magpie</a>
     <a href="/docs/docker">Docker</a>
     <a href="/docs/privacy">Privacy</a>
+    <a href="/docs/masking">Privacy masking</a>
     <a href="/docs/import">Add to magpie</a>
     <a href="/docs/integrate">Integrate</a>
     <a href="https://github.com/yetone/magpie">GitHub</a>

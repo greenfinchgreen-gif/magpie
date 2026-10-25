@@ -49,6 +49,7 @@
     <a class="toc-only" href="/docs/zh/remote">远程 magpie</a>
     <a class="toc-only" href="/docs/zh/docker">Docker</a>
     <a class="toc-only" href="/docs/zh/privacy">隐私</a>
+    <a class="toc-only" href="/docs/zh/masking">本地脱敏</a>
     <a href="/docs/zh/import">Add to magpie</a>
     <a href="/docs/zh/integrate">接入应用</a>
     <a href="https://github.com/yetone/magpie-releases/releases">版本发布</a>
@@ -290,6 +291,28 @@ magpie claude group/opus-anywhere    <span class="c"># 使用它</span></pre>
 IP-CIDR6,::1/128,DIRECT,no-resolve</pre>
     </div>
     <p>Clash / mihomo 的配置里把这两行写在 <code>rules:</code> 下，每行前面加 <code>- </code>。改完让 Agent 重新发一次请求即可。</p>
+    <h3 id="dsh-deepseek">DeepSeek Harness 能保留自己的 DeepSeek 行，同时走 magpie 吗？</h3>
+    <p>可以，手动配置。连接 dsh 时 magpie 只加自己的路由，dsh 的 DeepSeek 行（<code>llm-deepseek</code>）留给 dsh。这一行在会话中途改提示词或工具时能保住 DeepSeek 的缓存。要让它经过 magpie，在 <code>~/.dsh/profiles/&lt;profile&gt;/cordis.patch.yml</code> 里加上：</p>
+    <div class="code">
+      <span class="lang">cordis.patch.yml</span>
+      <button class="copy" data-copy="ex-dsh-deepseek">复制</button>
+      <pre id="ex-dsh-deepseek">- id: llm-deepseek
+  config:
+    baseURL: http://127.0.0.1:3425
+    apiKeyEnv: MAGPIE_DS_KEY
+    maxInlineRequestImageBytes: 67108864
+    models:
+      - id: deepseek/deepseek-flash
+        name: DeepSeek V4.1 Flash (magpie)
+        contextWindow: 1000000
+        inputModalities: [text, image]
+        systemPromptUpdate: in-history
+        toolUpdate: addition-only
+      - id: deepseek/deepseek-v4-pro
+        name: DeepSeek V4 Pro (magpie)
+        contextWindow: 1000000</pre>
+    </div>
+    <p><code>baseURL</code> 不带 <code>/anthropic</code>。模型 id 用 magpie 的（<code>magpie models</code>）；写了 <code>models</code> 就会替换 dsh 的默认列表，所以两行更新方式要保留。<code>MAGPIE_DS_KEY</code> 里放网关密钥（本机是 <code>magpie</code>），不是你的 DeepSeek 密钥：export、写进 <code>~/.dsh/.env</code>，或在 dsh 模型页的 DeepSeek 行填入都行。模型在 dsh 里选；在 magpie 里断开不会动这一项。magpie 没有 Files API，dsh 会把图片按 base64 每轮内联发送，上限是 <code>maxInlineRequestImageBytes</code>（默认 20 MiB，上面设成 64 MiB）。这一行只用 DeepSeek 自己的模型。<a href="https://github.com/yetone/magpie/blob/main/docs/reference.md#deepseek-harness-the-deepseek-row-by-hand">详见参考文档</a>。</p>
     <p style="margin-top:48px">遇到问题，或者有值得分享的配置？来 <a href="https://discord.gg/vGSnD3ZKQF">Discord</a> 聊。想给自己的用户一键添加供应商的厂商，请看 <a href="/docs/zh/import">Add to magpie</a>。</p>
   </article>
 </main>
@@ -303,6 +326,7 @@ IP-CIDR6,::1/128,DIRECT,no-resolve</pre>
     <a href="/docs/zh/remote">远程 magpie</a>
     <a href="/docs/zh/docker">Docker</a>
     <a href="/docs/zh/privacy">隐私</a>
+    <a href="/docs/zh/masking">本地脱敏</a>
     <a href="/docs/zh/import">Add to magpie</a>
     <a href="/docs/zh/integrate">接入应用</a>
     <a href="https://github.com/yetone/magpie">GitHub</a>

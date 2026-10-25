@@ -181,6 +181,12 @@ type Agent struct {
 	// its sign-in only as it opens, sends nothing on it till it is opened
 	// again (MasterYi on Discord).
 	AppOut func() bool
+	// SideModel is the model Codex is set to when it is one of magpie's,
+	// picked beside its ChatGPT sign-in (by the base URL, magpie not its
+	// provider), "" otherwise: the gateway answers the Codex app's hidden
+	// side turns (titles, descriptions, summaries), which it asks for on a
+	// model of its own, on it rather than on the ChatGPT account.
+	SideModel func() string
 	// Routed reports that the agent's config sends whatever model it
 	// names to magpie's gateway (Codex's openai_base_url or magpie as its
 	// provider), so a model's name the gateway takes as a routing group

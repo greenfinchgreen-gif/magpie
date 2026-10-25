@@ -49,6 +49,7 @@
     <a class="toc-only" href="/docs/ja/remote">リモート magpie</a>
     <a class="toc-only" href="/docs/ja/docker">Docker</a>
     <a class="toc-only" href="/docs/ja/privacy">プライバシー</a>
+    <a class="toc-only" href="/docs/ja/masking">プライバシーマスキング</a>
     <a href="/docs/ja/import">magpie に追加</a>
     <a href="/docs/integrate">アプリ連携</a>
     <a href="https://github.com/yetone/magpie-releases/releases">リリース</a>
@@ -290,6 +291,28 @@ magpie claude group/opus-anywhere    <span class="c"># これを使う</span></p
 IP-CIDR6,::1/128,DIRECT,no-resolve</pre>
     </div>
     <p>Clash / mihomo の設定では、同じ行を <code>rules:</code> の下に、それぞれ先頭に <code>- </code> を付けて書きます。そのあと、エージェントからもう一度リクエストを送ってください。</p>
+    <h3 id="dsh-deepseek">DeepSeek Harness の DeepSeek 行をそのまま使い、magpie を通せますか？</h3>
+    <p>手で設定すればできます。dsh を接続すると magpie は自分のルートを足すだけで、dsh の DeepSeek 行（<code>llm-deepseek</code>）は dsh に任せます。この行は、セッションの途中でプロンプトやツールが変わっても DeepSeek のキャッシュを保ちます。magpie を通すには <code>~/.dsh/profiles/&lt;profile&gt;/cordis.patch.yml</code> に次を足します：</p>
+    <div class="code">
+      <span class="lang">cordis.patch.yml</span>
+      <button class="copy" data-copy="ex-dsh-deepseek">コピー</button>
+      <pre id="ex-dsh-deepseek">- id: llm-deepseek
+  config:
+    baseURL: http://127.0.0.1:3425
+    apiKeyEnv: MAGPIE_DS_KEY
+    maxInlineRequestImageBytes: 67108864
+    models:
+      - id: deepseek/deepseek-flash
+        name: DeepSeek V4.1 Flash (magpie)
+        contextWindow: 1000000
+        inputModalities: [text, image]
+        systemPromptUpdate: in-history
+        toolUpdate: addition-only
+      - id: deepseek/deepseek-v4-pro
+        name: DeepSeek V4 Pro (magpie)
+        contextWindow: 1000000</pre>
+    </div>
+    <p><code>baseURL</code> に <code>/anthropic</code> は付けません。モデル id は magpie のもの（<code>magpie models</code>）で、<code>models</code> を書くと dsh の既定の一覧が置き換わるので、更新方法の 2 行も残してください。<code>MAGPIE_DS_KEY</code> には DeepSeek のキーではなくゲートウェイのキー（このコンピュータでは <code>magpie</code>）を入れます。export するか、<code>~/.dsh/.env</code> に書くか、dsh のモデルページの DeepSeek 行に入力します。モデルは dsh で選びます。magpie で接続を解除してもこの設定は残ります。magpie には Files API がないため、dsh は画像を毎ターン base64 でインライン送信します。上限は <code>maxInlineRequestImageBytes</code>（既定 20 MiB、上の例では 64 MiB）です。この行では DeepSeek 自身のモデルだけを使ってください。<a href="https://github.com/yetone/magpie/blob/main/docs/reference.md#deepseek-harness-the-deepseek-row-by-hand">詳しくはリファレンスへ</a>。</p>
     <p style="margin-top:48px">困ったときや、共有したい構成があるときは <a href="https://discord.gg/vGSnD3ZKQF">Discord</a> でどうぞ。ユーザーにすぐ使えるプロバイダを配りたいベンダーの方は <a href="/docs/ja/import">magpie に追加</a> をご覧ください。</p>
   </article>
 </main>
@@ -303,6 +326,7 @@ IP-CIDR6,::1/128,DIRECT,no-resolve</pre>
     <a href="/docs/ja/remote">リモート magpie</a>
     <a href="/docs/ja/docker">Docker</a>
     <a href="/docs/ja/privacy">プライバシー</a>
+    <a href="/docs/ja/masking">プライバシーマスキング</a>
     <a href="/docs/ja/import">magpie に追加</a>
     <a href="/docs/integrate">アプリ連携</a>
     <a href="https://github.com/yetone/magpie">GitHub</a>

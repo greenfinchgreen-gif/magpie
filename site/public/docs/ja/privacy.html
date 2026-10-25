@@ -49,6 +49,7 @@
     <a class="toc-only" href="/docs/ja/remote">リモート magpie</a>
     <a class="toc-only" href="/docs/ja/docker">Docker</a>
     <a class="toc-only" href="/docs/ja/privacy">プライバシー</a>
+    <a class="toc-only" href="/docs/ja/masking">プライバシーマスキング</a>
     <a href="/docs/ja/import">magpie に追加</a>
     <a href="/docs/integrate">アプリ連携</a>
     <a href="https://github.com/yetone/magpie-releases/releases">リリース</a>
@@ -77,6 +78,7 @@
     <a href="#site">usemagpie.ai に見えるもの</a>
     <a href="#lists">magpie が取得する公開リスト</a>
     <a href="#otel">OTLP エクスポート</a>
+    <a href="#masking">プロバイダに送る内容のマスク</a>
     <a href="#why">カウントが既定でオンの理由</a>
   </aside>
 
@@ -182,6 +184,22 @@
     <h2 id="otel"><a class="anchor" href="#otel">OTLP エクスポート</a></h2>
     <p>magpie はゲートウェイの各リクエストを、あなたの OpenTelemetry コレクター（Langfuse など）へエクスポートできます。<b>既定ではオフ</b>で、送り先はあなたが設定したエンドポイントだけです。私たちには送りません。オンにすると、リクエストごとのスパン（エージェント、プロバイダー、モデル、トークン数、ステータス、時間、推定コスト）を送ります。別のスイッチで、メトリクス、ローカルのエージェント会話、リクエストと返答の本文（シークレットはマスク）を加えられます。<span class="ui">設定</span> → <span class="ui">オブザーバビリティ</span> でオンにするか、<code>magpie serve</code> では <code>MAGPIE_OTEL_ENABLED</code>、<code>MAGPIE_OTEL_ENDPOINT</code>、<code>MAGPIE_OTEL_HEADERS</code>、<code>MAGPIE_OTEL_METRICS</code>、<code>MAGPIE_OTEL_SESSIONS</code>、<code>MAGPIE_OTEL_BODIES</code>、<code>MAGPIE_OTEL_BODIES_WHOLE</code> を使います。エンドポイントだけではオンになりません。詳しくは<a href="https://github.com/yetone/magpie/blob/main/docs/reference.md#otlp-export">リファレンス</a>を。</p>
 
+    <h2 id="masking"><a class="anchor" href="#masking">プロバイダに送る内容のマスク</a></h2>
+    <p>ここまでの節は magpie が自分で送るものです。エージェントが送る内容は選んだプロバイダに届きますが、<b>プライバシーマスク</b>はその中の秘密をこのコンピュータに留めます。<b>既定ではオフ</b>で、<span class="ui">設定</span> → <span class="ui">プライバシー</span> でオンにします。</p>
+    <figure class="figure">
+      <img class="for-light" src="/img/masking-ja-light.png" width="1912" height="1038" loading="lazy" alt="観測 › マスク：7 日間でベンダーに渡さなかった値と、マスクしたリクエストごとの記録">
+      <img class="for-dark" src="/img/masking-ja-dark.png" width="1912" height="1038" loading="lazy" alt="観測 › マスク：7 日間でベンダーに渡さなかった値と、マスクしたリクエストごとの記録">
+      <figcaption>観測 › マスク：リクエストごとに、ベンダーに渡さなかったもの。</figcaption>
+    </figure>
+    <ul>
+      <li>リクエストがこのコンピュータを出る前に、API キー、秘密鍵、トークン、メール、チェックサムの合うカード番号や ID 番号が <code>{{API_KEY_k3v9x2mq}}</code> のようなプレースホルダーになります。<span class="ui">ローカルモデルで検出</span> をオンにすると、このコンピュータで動くモデルが、ルールでは見つからない名前、住所、パスワードも見つけます（1.6 GB のダウンロード、CPU で動作）。</li>
+      <li>応答の中のプレースホルダーは、ストリームやツール呼び出しの引数も含めて元の値に戻るので、エージェントとファイルには本物の値が残ります。</li>
+      <li>同じ値はいつも同じプレースホルダーになるので、会話とプロンプトキャッシュはそのまま有効です。</li>
+      <li>値はメモリにだけ置かれ、ディスク上の記録は種類、長さ、先頭の数文字だけ。マスクがオンなのに動かないときは、リクエストは 503 になり、何も送られません。</li>
+      <li>モデルに見えるのはプレースホルダーで、値そのものではありません。そのまま使う必要のある値（チームのアドレス、テスト用のキー）は <span class="ui">マスクしない</span> に入れてください。</li>
+    </ul>
+    <p>オンにする方法、各スイッチがマスクするもの、例、効いているかの確かめ方は <a href="/docs/ja/masking">プライバシーマスキング</a> へ。</p>
+
     <h2 id="why"><a class="anchor" href="#why">カウントが既定でオンの理由</a></h2>
     <p>magpie は何十ものエージェントとプロバイダーに対応し、少人数で保守しています。毎日のカウントは、実際に使われているものを知り、それを優先して動くように保つための手段です。リリース版で既定オンなのは、自分でオンにする人の数だけでは少なすぎて、それがわからないからです。その代わり、送るものは小さく保っています。ランダムな ID、組み込みの ID、数だけです。スイッチ 1 つか <code>DO_NOT_TRACK=1</code> でオフにでき、ソースからのビルドは送らず、送るものはすべてこのページに挙げています。</p>
   </article>
@@ -197,6 +215,7 @@
     <a href="/docs/ja/remote">リモート magpie</a>
     <a href="/docs/ja/docker">Docker</a>
     <a href="/docs/ja/privacy">プライバシー</a>
+    <a href="/docs/ja/masking">プライバシーマスキング</a>
     <a href="/docs/ja/import">magpie に追加</a>
     <a href="/docs/integrate">アプリ連携</a>
     <a href="https://github.com/yetone/magpie">GitHub</a>

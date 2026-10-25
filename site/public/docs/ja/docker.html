@@ -49,6 +49,7 @@
     <a class="toc-only" href="/docs/ja/remote">リモート magpie</a>
     <a class="toc-only" href="/docs/ja/docker">Docker</a>
     <a class="toc-only" href="/docs/ja/privacy">プライバシー</a>
+    <a class="toc-only" href="/docs/ja/masking">プライバシーマスキング</a>
     <a href="/docs/ja/import">magpie に追加</a>
     <a href="/docs/integrate">アプリ連携</a>
     <a href="https://github.com/yetone/magpie-releases/releases">リリース</a>
@@ -89,7 +90,7 @@
     <div class="table-wrap"><table>
       <tr><td><b>イメージ</b></td><td><code>ghcr.io/yetone/magpie</code>（<code>linux/amd64</code> と <code>linux/arm64</code>）</td></tr>
       <tr><td><b>タグ</b></td><td><code>latest</code>（最新リリース）、<code>0.1.1150</code>（特定のリリース）、<code>0.1</code>、<code>edge</code>（<code>main</code> の変更ごと）</td></tr>
-      <tr><td><b>ポート</b></td><td><code>3425</code> はエージェントが呼ぶゲートウェイ、<code>3430</code> はコンテナが <code>magpie web</code> を動かすときのブラウザ UI</td></tr>
+      <tr><td><b>ポート</b></td><td><code>3425</code> はエージェントが呼ぶゲートウェイ、<code>3430</code> はコンテナが <code>magpie web</code> を動かすときのブラウザ UI。ゲートウェイの <code>/v1</code> ルートにも応えるので、リバースプロキシはこのポートだけで足ります</td></tr>
       <tr><td><b>ボリューム</b></td><td><code>/config</code>：プロバイダ、キー、サインイン、プラグイン、使用量</td></tr>
       <tr><td><b>ユーザー</b></td><td>nonroot（uid 65532）</td></tr>
     </table></div>
@@ -219,6 +220,7 @@ docker logs magpie</pre>
     <a href="/docs/ja/remote">リモート magpie</a>
     <a href="/docs/ja/docker">Docker</a>
     <a href="/docs/ja/privacy">プライバシー</a>
+    <a href="/docs/ja/masking">プライバシーマスキング</a>
     <a href="/docs/ja/import">magpie に追加</a>
     <a href="/docs/integrate">アプリ連携</a>
     <a href="https://github.com/yetone/magpie">GitHub</a>
