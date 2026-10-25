@@ -535,7 +535,19 @@ func pluginLogin(ctx context.Context, name, method string) error {
 	// magpie, it comes back
 	id := provider.PluginSignedIn(saved)
 	fmt.Println(green.Render("✓"), "signed in to", pp.Name, muted.Render("· its models are "+id+"/<model>"))
+	sayStillOff(id)
 	return nil
+}
+
+// sayStillOff tells, after a sign-in, that the provider it went to is
+// switched off. A sign-in keeps the user's own switch as it was, but
+// "signed in" and then "○ switched off" in magpie providers read as a bug
+// with nothing saying how to turn it on (Atlas, WorkBuddy AI). A provider
+// that can't be found says nothing: not known to be off.
+func sayStillOff(id string) {
+	if p, err := provider.Find(id); err == nil && p.Off {
+		fmt.Println(amber.Render("!"), p.Name, "is switched off in magpie, so agents aren't given its models · turn it on: magpie provider on "+p.ID)
+	}
 }
 
 // keyPrompt asks an "api" method's key: its title, then the hint the

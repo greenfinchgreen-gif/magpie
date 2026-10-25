@@ -2836,6 +2836,8 @@ body.window .ag-sk-icon { width: 22px; height: 22px; border-radius: 6px; }
 .sheet .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1px 12px; }
 .sheet .none { padding: 14px 2px; color: var(--muted); font-size: 12px; }
 #gwModels .none { padding: 16px; color: var(--muted); font-size: 12px; text-align: center; }
+/* no gateway key yet: said in its card as Recent calls says it has none */
+#gatewayKeys .none { padding: 13px 14px; color: var(--muted); font-size: 11.5px; line-height: 1.45; }
 #view-gateway .row-head .find { margin-right: 8px; }
 /* a row of the add sheet: an icon and a name, no frame; a row already
    added has a small green dot after its name rather than fading */
